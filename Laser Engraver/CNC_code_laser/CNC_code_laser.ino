@@ -9,20 +9,24 @@ Meu setup:
 - 1x Motor DC controlado por 2 pinos e encoder controlado por 1 pino no Arduino
 ******************************************************************************/
 
+#include <CheapStepper.h>
 
-#include <Servo.h>
-#include <AFMotor.h>
+int motor_value = 160;
+
+volatile bool STOP = false;
+
+long positionLeft  = 0;
+
 
 #define LINE_BUFFER_LENGTH 512
 
-char STEP = MICROSTEP ;
 
 // Servo position for Up and Down
 const int penZUp = LOW;
 const int penZDown = HIGH;
 
 // Servo on PWM pin 10
-const int penServoPin =10 ;
+const int penServoPin = 3 ;
 
 // Should be right for DVD steppers, but is not too important here
 const int stepsPerRevolution = 4096;
@@ -30,9 +34,7 @@ const int stepsPerRevolution = 4096;
 // create servo object to control a servo
 //Servo penServo;
 
-// Initialize steppers for X- and Y-axis using this Arduino pins for the L293D H-bridge
-AF_Stepper myStepperY(stepsPerRevolution,1);
-AF_Stepper myStepperX(stepsPerRevolution,2);
+CheapStepper myStepperY;
 
 /* Structures, global variables    */
 struct point {
@@ -45,23 +47,23 @@ struct point {
 struct point actuatorPos;
 
 //  Drawing settings, should be OK
-float StepInc = 1;
-int StepDelay = 2;
+
+int StepDelay = 4;
 int LineDelay =0;
 int penDelay = 10;
 
 // Motor steps to go 1 millimeter.
 // Use test sketch to go 100 steps. Measure the length of line.
 // Calculate steps per mm. Enter here.
-float StepsPerMillimeterX = 100.0;
-float StepsPerMillimeterY = 100.0;
+float StepsPerMillimeterX = 2.4615;
+float StepsPerMillimeterY = 105.0256;
 
 // Drawing robot limits, in mm
 // OK to start with. Could go up to 50 mm if calibrated well.
 float Xmin = 0;
-float Xmax = 40;
+float Xmax = 150;
 float Ymin = 0;
-float Ymax = 40;
+float Ymax = 150;
 float Zmin = 0;
 float Zmax = 1;
 
@@ -70,7 +72,7 @@ float Ypos = Ymin;
 float Zpos = Zmax;
 
 // Set to true to get debug output.
-boolean verbose = false;
+boolean verbose = true;
 
 //  Needs to interpret
 //  G1 for moving
@@ -88,15 +90,11 @@ void setup() {
 
   Serial.begin( 9600 );
 
+  attachInterrupt(digitalPinToInterrupt(2), encoder, CHANGE);
+
   pinMode(penServoPin, OUTPUT);
   digitalWrite(penServoPin, penZUp);
   delay(100);
-
-  // Decrease if necessary
-  myStepperX.setSpeed(100);
-
-  myStepperY.setSpeed(100);
-
 
   //  Set & move to initial default position
   // TBD
@@ -254,10 +252,10 @@ void processIncomingLine( char* line, int charNB ) {
           char* indexS = strchr( line+currentIndex, 'S' );
           float Spos = atof( indexS + 1);
           //         Serial.println("ok");
-          if (Spos == 30) {
+          if (Spos == 50) {
             penDown();
           }
-          if (Spos == 50) {
+          if (Spos == 30) {
             penUp();
           }
           break;
@@ -338,30 +336,30 @@ void drawLine(float x1, float y1) {
   //  Let's find out the change for the coordinates
   long dx = abs(x1-x0);
   long dy = abs(y1-y0);
-  int sx = x0<x1 ? StepInc : -StepInc;
-  int sy = y0<y1 ? StepInc : -StepInc;
+  bool sx = x0<x1 ? true : false;
+  bool sy = y0<y1 ? true : false;
 
   long i;
   long over = 0;
 
   if (dx > dy) {
     for (i=0; i<dx; ++i) {
-      myStepperX.onestep(sx,STEP);
+      myStepperX(sx);
       over+=dy;
       if (over>=dx) {
         over-=dx;
-        myStepperY.onestep(sy,STEP);
+        myStepperY.step(sy);
       }
     delay(StepDelay);
     }
   }
   else {
     for (i=0; i<dy; ++i) {
-      myStepperY.onestep(sy,STEP);
+      myStepperY.step(sy);
       over+=dx;
       if (over>=dy) {
         over-=dy;
-        myStepperX.onestep(sx,STEP);
+        myStepperX(sx);
       }
       delay(StepDelay);
     }
@@ -379,9 +377,9 @@ void drawLine(float x1, float y1) {
   if (verbose)
   {
     Serial.print("Going to (");
-    Serial.print(x0);
+    Serial.print(x1);
     Serial.print(",");
-    Serial.print(y0);
+    Serial.print(y1);
     Serial.println(")");
   }
 
@@ -397,8 +395,6 @@ void penUp() {
   digitalWrite(penServoPin,penZUp);
   delay(penDelay);
   Zpos=Zmax;
-  digitalWrite(15, LOW);
-    digitalWrite(16, HIGH);
   if (verbose) {
     Serial.println("Pen up!");
 
@@ -409,11 +405,45 @@ void penDown() {
   digitalWrite(penServoPin,penZDown);
   delay(penDelay);
   Zpos=Zmin;
-  digitalWrite(15, HIGH);
-    digitalWrite(16, LOW);
   if (verbose) {
     Serial.println("Pen down.");
 
 
   }
+}
+
+void myStepperX(bool sx) {
+  if (sx){
+    while(!STOP){
+
+    analogWrite(5, motor_value);
+    digitalWrite(6, LOW);
+
+    }
+
+    digitalWrite(5, LOW);
+    digitalWrite(6, LOW);
+
+    STOP = false;
+  }
+
+  else{
+
+    while(!STOP){
+
+    analogWrite(6, motor_value);
+    digitalWrite(5, LOW);
+
+    }
+
+    digitalWrite(5, LOW);
+    digitalWrite(6, LOW);
+
+    STOP = false;
+  }
+
+}
+
+void encoder() {
+  STOP = true;
 }

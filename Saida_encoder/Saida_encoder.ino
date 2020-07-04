@@ -1,75 +1,89 @@
-#include <PIDController.h>
 volatile long int encoder_pos = 0;
-PIDController pos_pid; 
 int motor_value = 255;
 unsigned int integerValue=0;  // Max value is 65535
-char incomingByte;
+int incomingByte;
+int initState, state;
+bool stateFlag = false;
+bool STOP = false;
+int motorDelay = 10;
+
 void setup() {
 
   Serial.begin(9600);
-  pinMode(4, INPUT);
+  Serial.setTimeout(10);
+  pinMode(2, INPUT);
   pinMode(5, OUTPUT);
   pinMode(6, OUTPUT);
-  attachInterrupt(digitalPinToInterrupt(2), encoder, RISING);
 
-  pos_pid.begin();    
-  pos_pid.tune(15, 0, 2000);    
-  pos_pid.limit(-255, 255);
+  initState = digitalRead(2);
+
+  Serial.print("First condition of encoder: ");
+  Serial.println(initState);
+
+  attachInterrupt(digitalPinToInterrupt(2), encoder, CHANGE);
+
 }
+
+
 
 void loop() {
+  integerValue = 0;
 
-if (Serial.available() > 0) {  
-    integerValue = 0;        
-    while(1) {           
-      incomingByte = Serial.read();
-      if (incomingByte == '\n') break;   
-      if (incomingByte == -1) continue;  
-      integerValue *= 10;  
-      integerValue = ((incomingByte - 48) + integerValue);
-      pos_pid.setpoint(integerValue);
-    }
-}
+  if (Serial.available() > 0) {
+      integerValue = 0;
+      while(1) {
+        incomingByte = Serial.read();
+        if (incomingByte == '\n') break;
+        if (incomingByte == -1) continue;
+        integerValue *= 10;
+        integerValue = ((incomingByte - 48) + integerValue);
+      }
+  }
 
-   motor_value = pos_pid.compute(encoder_pos);
-if(motor_value > 0){
-  MotorCounterClockwise(motor_value);
-}else{
-  MotorClockwise(abs(motor_value));
-}
-  Serial.println(encoder_pos);
-  delay(10);
-}
+  if (integerValue!=0){
+    Serial.print("Valor recebido: ");
+    Serial.println(integerValue);
+  }
 
+//satetFlag true significa que é para rodar no sentido antihorário, somando a posição do encoder
+
+  if(integerValue > 0){
+    stateFlag = true;
+    MotorCounterClockwise(motor_value);
+  }
+    delay(10);
+
+}
 
 
 void encoder(){
-
-  
-
-  if(digitalRead(4) == HIGH){
-    encoder_pos++;
-  }else{
-    encoder_pos--;
-  }
+  if (encoder_pos != 0) Serial.println(encoder_pos);
+  if (stateFlag) encoder_pos++;
+  else encoder_pos--;
+  digitalWrite(5, LOW);
+  digitalWrite(6, LOW);
+  encoder_pos == integerValue ? STOP = true : STOP = false;
 }
 
 void MotorClockwise(int power){
-  if(power > 100){
-  analogWrite(5, power);
-  digitalWrite(6, LOW);
-  }else{
-    digitalWrite(5, LOW);
+  while(1){
+    analogWrite(5, power);
     digitalWrite(6, LOW);
+    if (STOP) break;
   }
+  STOP = false;
+  digitalWrite(5, LOW);
+  digitalWrite(6, LOW);
 }
 
 void MotorCounterClockwise(int power){
-  if(power > 100){
-  analogWrite(6, power);
-  digitalWrite(5, LOW);
-  }else{
+   while(1){
+    //Serial.println(encoder_pos);
+    analogWrite(6, power);
     digitalWrite(5, LOW);
-    digitalWrite(6, LOW);
+    if (STOP) break;
   }
+  STOP = false;
+  digitalWrite(5, LOW);
+  digitalWrite(6, LOW);
 }
